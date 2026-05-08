@@ -6,6 +6,7 @@ import {
   BookOpen,
   Lightbulb,
 } from "lucide-react";
+import { Logomark } from "@/components/brand/logo";
 
 const navItems = [
   { href: "/shows", label: "Shows", icon: Calendar },
@@ -19,11 +20,7 @@ export function Sidebar() {
       {/* Brand */}
       <div className="px-5 py-5 border-b border-ink-200">
         <Link href="/shows" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-600 to-brand-800 flex items-center justify-center shrink-0 shadow-sm shadow-brand-700/30 ring-1 ring-inset ring-brand-800/20">
-            <span className="text-white text-[11px] font-bold tracking-tight">
-              gr
-            </span>
-          </div>
+          <Logomark size={32} />
           <div>
             <div className="font-semibold text-ink-900 tracking-tight leading-none">
               Greenroom

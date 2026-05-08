@@ -1,7 +1,7 @@
 /**
- * Greenroom 18-month synthetic seed.
+ * Greenroom 24-month synthetic seed.
  *
- * Generates ~370 shows across 18 months at The Crescent, with realistic:
+ * Generates ~540 shows across 24 months at The Crescent, with realistic:
  *   - artist tiers (draw size distributions)
  *   - deal type mix (flat 25%, vs 50%, percentage_of_net 15%, door 5%, percentage_of_gross 5%)
  *   - bonus structures (~30% of vs / % of net deals; mix of gross thresholds, sellout bonuses,
