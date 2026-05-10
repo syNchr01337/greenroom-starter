@@ -14,9 +14,12 @@ export default async function ShowsPage() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const upcoming = rows.filter((r) => new Date(r.show.date) >= today);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const upcoming = rows.filter((r) => new Date(r.show.date) >= tomorrow);
   const past = rows
-    .filter((r) => new Date(r.show.date) < today)
+    .filter((r) => new Date(r.show.date) < tomorrow)
     .reverse();
 
   const settledCount = past.filter((r) => r.settlement).length;

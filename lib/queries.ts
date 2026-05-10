@@ -31,7 +31,7 @@ function todayDateString(): string {
 }
 
 function isShowPast(showDate: string): boolean {
-  return showDate < todayDateString();
+  return showDate <= todayDateString();
 }
 
 export async function getAllShows() {
