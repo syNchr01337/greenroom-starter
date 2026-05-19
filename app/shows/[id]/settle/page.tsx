@@ -22,7 +22,10 @@ import {
   Field,
 } from "@/components/ui/card";
 import { StatusBadge, DealTypeBadge, PlainBadge } from "@/components/ui/badge";
-import { calculateSettlement } from "@/lib/dealMath";
+import {
+  calculateSettlement,
+  type VsSettlementBreakdown,
+} from "@/lib/dealMath";
 import {
   formatMoney,
   formatShowDateFull,
@@ -66,6 +69,7 @@ export default async function SettlePage({
     deal,
     ticketSales,
     expenses,
+    recoups,
     venueCapacity: data.venue?.capacity ?? undefined,
   });
   const grossSoFar = ticketSales.reduce((sum, t) => sum + t.gross, 0);
@@ -392,11 +396,13 @@ function UnsupportedDeal({
             <FileWarning className="h-5 w-5 text-amber-700" />
           </div>
           <h2 className="font-display text-[22px] font-medium text-ink-900 mb-2" style={{ letterSpacing: "-0.02em" }}>
-            The in-app tool can&apos;t settle a {friendly[dealType] ?? dealType} yet.
+            This {friendly[dealType] ?? dealType} needs Mariana&apos;s spreadsheet tonight.
           </h2>
           <p className="text-[13px] text-ink-500 max-w-md mx-auto leading-relaxed">
-            Mariana would do this on a Google Sheet at 2am tonight. The inputs
-            are below — but the math doesn&apos;t happen here.
+            This particular deal is outside what Greenroom can safely compute
+            in-app — usually because of an unusual clause, ratchet, or missing
+            term. The inputs are below, but Mariana should settle this one in
+            her sheet.
           </p>
         </CardContent>
       </Card>
@@ -497,6 +503,15 @@ function SupportedSettlement({
     Awaited<ReturnType<typeof getShowById>>
   >["settlement"];
 }) {
+  if (calc.vsBreakdown) {
+    return (
+      <VsSettlementWorksheet
+        breakdown={calc.vsBreakdown}
+        existingSettlement={existingSettlement}
+      />
+    );
+  }
+
   return (
     <>
       {/* Hero number */}
@@ -602,6 +617,201 @@ function SupportedSettlement({
       )}
     </>
   );
+}
+
+function VsSettlementWorksheet({
+  breakdown,
+  existingSettlement,
+}: {
+  breakdown: VsSettlementBreakdown;
+  existingSettlement: NonNullable<
+    Awaited<ReturnType<typeof getShowById>>
+  >["settlement"];
+}) {
+  const isNet = breakdown.variant === "vs_net";
+  const basisLabel = isNet ? "Net basis" : "Gross basis";
+  const basisValue = isNet
+    ? (breakdown.netBasis ?? 0)
+    : (breakdown.grossBasis ?? breakdown.grossBoxOffice);
+  const branchText =
+    breakdown.winningBranch === "percentage"
+      ? `We're paying the artist ${formatMoney(breakdown.finalPayoutToArtist)} tonight - ${formatPercent(breakdown.percentage)} of ${isNet ? "net" : "gross"} beat the ${formatMoney(breakdown.guaranteeAmount)} guarantee.`
+      : `We're paying the artist ${formatMoney(breakdown.finalPayoutToArtist)} tonight - the ${formatMoney(breakdown.guaranteeAmount)} guarantee beat ${formatPercent(breakdown.percentage)} of ${isNet ? "net" : "gross"}.`;
+
+  return (
+    <>
+      <Card accent="brand">
+        <CardContent className="py-5">
+          <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
+            <div>
+              <div className="eyebrow text-[10px] text-ink-400 mb-2">
+                GM sign-off summary
+              </div>
+              <div className="text-[13px] text-ink-700 leading-relaxed">
+                {branchText}
+              </div>
+            </div>
+            <div className="md:text-right">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-ink-400 mb-1">
+                Final payout
+              </div>
+              <div className="text-[28px] font-mono tabular font-semibold text-ink-900">
+                {formatMoney(breakdown.finalPayoutToArtist)}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {breakdown.flags.length > 0 && (
+        <div className="rounded-lg border border-amber-200/80 bg-amber-50/60 p-4 flex gap-3">
+          <AlertTriangle className="h-4 w-4 text-amber-700 mt-0.5 shrink-0" />
+          <div>
+            <div className="text-[13px] font-semibold text-amber-900">
+              Check before signing
+            </div>
+            <ul className="mt-2 space-y-1.5">
+              {breakdown.flags.map((flag) => (
+                <li
+                  key={flag}
+                  className="text-[12.5px] text-ink-700 leading-relaxed"
+                >
+                  {flag}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      <div className="text-center py-10 mb-2">
+        <div className="eyebrow text-[10px] text-ink-400 mb-3">
+          Total to artist
+        </div>
+        <div
+          className="text-[72px] font-mono tabular font-bold text-ink-900 leading-none"
+          style={{ letterSpacing: "-0.03em" }}
+        >
+          {formatMoney(breakdown.finalPayoutToArtist)}
+        </div>
+        {existingSettlement && (
+          <div className="mt-3">
+            {existingSettlement.status === "paid" ? (
+              <PlainBadge variant="brand">Paid</PlainBadge>
+            ) : existingSettlement.status === "signed" ||
+              existingSettlement.status === "finalized" ? (
+              <PlainBadge variant="brand">Signed</PlainBadge>
+            ) : existingSettlement.status === "disputed" ? (
+              <PlainBadge variant="rose">Disputed</PlainBadge>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <Card accent="brand">
+        <CardHeader>
+          <div>
+            <CardTitle>How we got to this number</CardTitle>
+            <CardDescription>
+              Line-by-line breakdown for tonight&apos;s settlement.
+            </CardDescription>
+          </div>
+          <PlainBadge variant="brand">
+            {breakdown.winningBranch === "percentage"
+              ? "Percentage wins"
+              : "Guarantee wins"}
+          </PlainBadge>
+        </CardHeader>
+        <CardContent className="divide-y divide-ink-100/80">
+          <Row
+            label="Tickets in the room"
+            value={formatMoney(breakdown.grossBoxOffice)}
+            note="What came in from tickets before any fees."
+          />
+          <Row
+            label="Card & platform fees"
+            value={formatMoney(-breakdown.feesTotal)}
+            note={
+              isNet
+                ? "What goes to card processors and the ticketing platform."
+                : "These fees are real, but they do not change the gross split tonight."
+            }
+          />
+          <Row
+            label="Expenses counted toward the cap"
+            value={formatMoney(-breakdown.eligibleExpensesCapped)}
+            note={expenseCapNote(breakdown)}
+          />
+          {isNet && breakdown.overCapAbsorbedByVenue > 0 && (
+            <Row
+              label="Over-cap absorbed by the venue"
+              value={formatMoney(breakdown.overCapAbsorbedByVenue)}
+              note="Anything above the cap that the venue is eating."
+            />
+          )}
+          <Row
+            label="What we're splitting"
+            value={formatMoney(basisValue)}
+            note={
+              isNet
+                ? "The amount we actually calculate the artist's percentage on."
+                : "For a gross deal, this is the full amount the percentage runs on."
+            }
+          />
+          <div className="pt-3" />
+          <Row
+            label="Guarantee floor"
+            value={formatMoney(breakdown.guaranteeBranchAmount)}
+            note="The minimum the artist is guaranteed, even on a soft night."
+          />
+          <Row
+            label={`% of ${isNet ? "net" : "gross"} share`}
+            value={formatMoney(breakdown.percentageBranchAmount)}
+            note="The artist's share if we use the percentage branch."
+          />
+          <Row
+            label={
+              breakdown.winningBranch === "percentage"
+                ? "Tonight, the percentage branch wins"
+                : "Tonight, the guarantee wins"
+            }
+            value={
+              breakdown.winningBranch === "percentage"
+                ? "Percentage"
+                : "Guarantee"
+            }
+            note="We pay whichever is higher so the artist gets the better of the two."
+          />
+          <div className="pt-3" />
+          <div className="flex items-baseline justify-between py-3 font-semibold">
+            <span className="text-[13px] text-ink-900">
+              What we're paying the artist
+            </span>
+            <span className="text-[18px] font-mono tabular text-ink-900">
+              {formatMoney(breakdown.finalPayoutToArtist)}
+            </span>
+          </div>
+          <div className="pb-1 text-[11.5px] text-ink-500 leading-snug">
+            This is the final number both sides are signing off on tonight.
+          </div>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+function expenseCapNote(breakdown: VsSettlementBreakdown): string {
+  if (breakdown.variant === "vs_gross") {
+    return "There is no expense deduction here because this deal is based on gross.";
+  }
+  if (breakdown.expenseCap == null) {
+    return "These are the show costs we are counting before the artist split.";
+  }
+  return `The show expenses that count against the agreed ${formatMoney(breakdown.expenseCap)} cap.`;
+}
+
+function formatPercent(value: number): string {
+  return `${(value * 100).toFixed(0)}%`;
 }
 
 function RecoupsSection({ recoups }: { recoups: Recoup[] }) {
