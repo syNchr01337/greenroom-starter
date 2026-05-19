@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { Expense } from "@/db/schema";
-import { calculateVsGross, calculateVsNet } from "./dealMath";
+import type { Deal, Expense, TicketSale } from "@/db/schema";
+import { calculateSettlement, calculateVsGross, calculateVsNet } from "./dealMath";
 
 function expense(amount: number, absorbedByVenue = false): Expense {
   return {
@@ -19,6 +19,34 @@ function expense(amount: number, absorbedByVenue = false): Expense {
 
 function assertMoney(actual: number | null, expected: number) {
   assert.equal(Math.round((actual ?? 0) * 100), Math.round(expected * 100));
+}
+
+function deal(overrides: Partial<Deal>): Deal {
+  return {
+    id: "deal_test",
+    showId: "show_test",
+    dealType: "vs",
+    guaranteeAmount: 5_000,
+    percentage: 0.8,
+    percentageBasis: "net",
+    expenseCap: 2_500,
+    hospitalityCap: null,
+    bonusesJson: null,
+    dealNotesFreetext: null,
+    createdAt: new Date("2026-05-19T12:00:00Z"),
+    ...overrides,
+  };
+}
+
+function ticketSale(gross: number, fees: number, qty = 500): TicketSale {
+  return {
+    id: `ticket_${gross}_${fees}`,
+    showId: "show_test",
+    qty,
+    gross,
+    fees,
+    capturedAt: new Date("2026-05-19T12:00:00Z"),
+  };
 }
 
 describe("Vs settlement math", () => {
@@ -78,6 +106,46 @@ describe("Vs settlement math", () => {
     assertMoney(breakdown.percentageBranchAmount, 11_564.8);
     assert.equal(breakdown.winningBranch, "percentage");
     assertMoney(breakdown.finalPayoutToArtist, 11_564.8);
+  });
+
+  it("flags vs_net when recoups exist but placement is unknown", () => {
+    const breakdown = calculateVsNet({
+      grossBoxOffice: 19_840,
+      feesTotal: 1_984,
+      expenses: [expense(1_500), expense(1_000)],
+      expenseCap: 2_500,
+      guaranteeAmount: 5_000,
+      percentage: 0.8,
+      recoupsTotal: 900,
+      recoupPlacementHint: "unknown",
+    });
+
+    assertMoney(breakdown.netBasis, 15_356);
+    assert.deepEqual(breakdown.flags, [
+      "Recoup placement ambiguous - confirm whether it is inside or outside the expense cap before finalizing settlement.",
+    ]);
+  });
+
+  it("supports standard percentage_of_net deals as a net waterfall with no guarantee", () => {
+    const result = calculateSettlement({
+      deal: deal({
+        dealType: "percentage_of_net",
+        guaranteeAmount: null,
+        percentage: 0.9,
+        percentageBasis: "net",
+        expenseCap: 600,
+      }),
+      ticketSales: [ticketSale(2_714, 271)],
+      expenses: [expense(1_200), expense(680)],
+    });
+
+    assert.equal(result.supported, true);
+    assert.equal(result.vsBreakdown?.variant, "vs_net");
+    assertMoney(result.vsBreakdown?.guaranteeAmount ?? null, 0);
+    assertMoney(result.vsBreakdown?.eligibleExpensesCapped ?? null, 600);
+    assertMoney(result.vsBreakdown?.overCapAbsorbedByVenue ?? null, 1_280);
+    assertMoney(result.vsBreakdown?.netBasis ?? null, 1_843);
+    assertMoney(result.vsBreakdown?.finalPayoutToArtist ?? null, 1_658.7);
   });
 
   it("calculates vs_gross when guarantee branch wins", () => {
