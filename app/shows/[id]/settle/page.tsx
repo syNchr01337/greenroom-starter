@@ -400,13 +400,15 @@ function UnsupportedDeal({
             <FileWarning className="h-5 w-5 text-amber-700" />
           </div>
           <h2 className="font-display text-[22px] font-medium text-ink-900 mb-2" style={{ letterSpacing: "-0.02em" }}>
-            This {friendly[dealType] ?? dealType} needs Mariana&apos;s spreadsheet tonight.
+            The in-app tool can&apos;t safely settle this deal yet.
           </h2>
           <p className="text-[13px] text-ink-500 max-w-md mx-auto leading-relaxed">
-            This particular deal is outside what Greenroom can safely compute
-            in-app — usually because of an unusual clause, ratchet, or missing
-            term. The inputs are below, but Mariana should settle this one in
-            her sheet.
+            This could be because key terms are missing in Greenroom or because
+            this deal uses a structure we don&apos;t support yet.
+          </p>
+          <p className="text-[13px] text-ink-500 max-w-md mx-auto leading-relaxed mt-2">
+            Mariana would still do this one in her spreadsheet tonight while we
+            keep the inputs below as reference.
           </p>
         </CardContent>
       </Card>

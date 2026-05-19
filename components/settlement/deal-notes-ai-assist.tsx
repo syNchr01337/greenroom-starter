@@ -39,6 +39,7 @@ export function DealNotesAiAssist({
   const [error, setError] = useState<string | null>(null);
 
   async function analyze() {
+    // TODO: track_event("deal_notes_ai_analyze_clicked", { showId })
     setLoading(true);
     setError(null);
     try {
@@ -56,6 +57,7 @@ export function DealNotesAiAssist({
       if (!response.ok) throw new Error("Request failed");
       setResult((await response.json()) as DealNotesAiResponse);
     } catch {
+      // TODO: track_event("deal_notes_ai_failed", { showId })
       setError(
         "Couldn't get suggestions right now - you can still settle using the breakdown above.",
       );
@@ -201,14 +203,17 @@ export function DealNotesAiAssist({
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => setResult(null)}
+                onClick={() => {
+                  // TODO: track_event("deal_notes_ai_ignored", { showId })
+                  setResult(null);
+                }}
               >
                 Ignore for now
               </Button>
             </div>
             <p className="text-[11.5px] text-ink-500 -mt-1">
-              Updates tonight&apos;s worksheet only. It doesn&apos;t change the
-              original deal email.
+              Updates tonight&apos;s worksheet; you can reset to the original
+              terms at any time.
             </p>
           </>
         )}

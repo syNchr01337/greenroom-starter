@@ -55,6 +55,7 @@ export function VsSettlementWorkspace({
 }: VsSettlementWorkspaceProps) {
   const [interpretation, setInterpretation] =
     useState<AppliedInterpretation | null>(null);
+  // TODO: track_event("vs_settlement_viewed", { dealType, variant, showId })
   const currentBreakdown = interpretation
     ? recalculateBreakdown(initialBreakdown, interpretation)
     : initialBreakdown;
@@ -78,7 +79,8 @@ export function VsSettlementWorkspace({
         percentage={structuredPercentage}
         expenseCap={structuredExpenseCap}
         usingAiInterpretation={Boolean(interpretation)}
-        onApply={(suggestions) =>
+        onApply={(suggestions) => {
+          // TODO: track_event("vs_ai_suggestions_applied", { showId })
           setInterpretation({
             variant: suggestions.suggestedVariant,
             guaranteeAmount: suggestions.suggestedGuarantee,
@@ -86,9 +88,12 @@ export function VsSettlementWorkspace({
             expenseCap: suggestions.suggestedExpenseCap,
             recoupPlacementHint: suggestions.suggestedRecoupPlacement,
             ambiguities: suggestions.ambiguities,
-          })
-        }
-        onReset={() => setInterpretation(null)}
+          });
+        }}
+        onReset={() => {
+          // TODO: track_event("vs_ai_suggestions_reset", { showId })
+          setInterpretation(null);
+        }}
       />
     </div>
   );
@@ -176,10 +181,14 @@ function VsSettlementWorksheet({
   const basisValue = isNet
     ? (breakdown.netBasis ?? 0)
     : (breakdown.grossBasis ?? breakdown.grossBoxOffice);
-  const percentageScopeText = isNet ? "net after expenses" : "gross";
+  const percentageScopeText = isNet ? "net" : "gross";
+  const netScopeText =
+    breakdown.expenseCap != null && breakdown.expenseCap > 0
+      ? `net after ${formatMoney(breakdown.expenseCap)} in show expenses`
+      : "net after agreed show expenses";
   const branchText =
     breakdown.winningBranch === "percentage"
-      ? `We're paying the artist ${formatMoney(breakdown.finalPayoutToArtist)} tonight - ${formatPercent(breakdown.percentage)} of ${percentageScopeText}${isNet && breakdown.expenseCap != null ? ` after ${formatMoney(breakdown.expenseCap)} in expenses` : ""} beat the ${formatMoney(breakdown.guaranteeAmount)} guarantee.`
+      ? `We're paying the artist ${formatMoney(breakdown.finalPayoutToArtist)} tonight - ${formatPercent(breakdown.percentage)} of ${isNet ? netScopeText : percentageScopeText} beat the ${formatMoney(breakdown.guaranteeAmount)} guarantee.`
       : `We're paying the artist ${formatMoney(breakdown.finalPayoutToArtist)} tonight - the ${formatMoney(breakdown.guaranteeAmount)} guarantee beat ${formatPercent(breakdown.percentage)} of ${percentageScopeText}.`;
 
   return (
@@ -199,6 +208,12 @@ function VsSettlementWorksheet({
               <div className="text-[13px] text-ink-700 leading-relaxed">
                 {branchText}
               </div>
+              {usingAiInterpretation && (
+                <div className="text-[11.5px] text-ink-500 mt-1">
+                  Using AI-assisted interpretation for this settlement only -
+                  it doesn&apos;t change the original deal email.
+                </div>
+              )}
             </div>
             <div className="md:text-right">
               <div className="text-[10px] uppercase tracking-[0.14em] text-ink-400 mb-1">
@@ -213,12 +228,13 @@ function VsSettlementWorksheet({
       </Card>
 
       {flags.length > 0 && (
+        // TODO: track_event("vs_settlement_flags_shown", { showId, flagsCount })
         <Card accent="amber">
           <CardHeader>
             <div>
               <CardTitle>Check before signing</CardTitle>
               <CardDescription>
-                Double-check these before you and the tour manager sign the
+                Double-check these points before you and the tour manager sign the
                 settlement sheet.
               </CardDescription>
             </div>
