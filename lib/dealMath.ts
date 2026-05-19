@@ -30,6 +30,28 @@
 
 import type { Deal, Expense, TicketSale, Bonus } from "@/db/schema";
 
+export type VsSettlementVariant = "vs_net" | "vs_gross";
+export type VsWinningBranch = "guarantee" | "percentage";
+
+export interface VsSettlementBreakdown {
+  variant: VsSettlementVariant;
+  grossBoxOffice: number;
+  feesTotal: number;
+  eligibleExpensesCapped: number;
+  expenseCap: number | null;
+  overCapAbsorbedByVenue: number;
+  outsideCapRecoupsTotal: number;
+  netBasis: number | null;
+  grossBasis: number | null;
+  guaranteeAmount: number;
+  percentage: number;
+  percentageBranchAmount: number;
+  guaranteeBranchAmount: number;
+  winningBranch: VsWinningBranch;
+  finalPayoutToArtist: number;
+  flags: string[];
+}
+
 export type SettlementCalculation =
   | {
       supported: true;
@@ -39,6 +61,7 @@ export type SettlementCalculation =
       totalToArtist: number;
       steps: { label: string; value: number; note?: string }[];
       finalFormula: string;
+      vsBreakdown?: VsSettlementBreakdown;
       // Bonuses that were applied. Empty array if no bonuses on the deal,
       // or if no bonuses triggered.
       bonusesApplied: { label: string; amount: number; reason: string }[];
@@ -59,6 +82,22 @@ interface CalcInput {
   // sellout bonuses are reported as "can't determine".
   venueCapacity?: number;
   ticketsSold?: number;
+}
+
+interface CalculateVsNetInput {
+  grossBoxOffice: number;
+  feesTotal: number;
+  expenses: Expense[];
+  expenseCap: number | null;
+  guaranteeAmount: number;
+  percentage: number;
+  outsideCapRecoupsTotal?: number;
+}
+
+interface CalculateVsGrossInput {
+  grossBoxOffice: number;
+  guaranteeAmount: number;
+  percentage: number;
 }
 
 export function parseBonuses(deal: Deal): Bonus[] {
@@ -168,6 +207,146 @@ export function calculateSettlement(input: CalcInput): SettlementCalculation {
     };
   }
 
+  // ---------- vs deal ----------
+  if (deal.dealType === "vs") {
+    if (deal.guaranteeAmount == null || deal.percentage == null) {
+      return {
+        supported: false,
+        reason: "Vs deal is missing a guarantee amount or percentage.",
+        dealType: deal.dealType,
+      };
+    }
+
+    const bonusResult = applyBonuses(parseBonuses(deal), {
+      gross: grossBoxOffice,
+      tickets,
+      capacity: venueCapacity,
+    });
+
+    if (deal.percentageBasis === "gross") {
+      const breakdown = calculateVsGross({
+        grossBoxOffice,
+        guaranteeAmount: deal.guaranteeAmount,
+        percentage: deal.percentage,
+      });
+
+      return {
+        supported: true,
+        grossBoxOffice,
+        netBoxOffice,
+        totalExpenses,
+        totalToArtist: breakdown.finalPayoutToArtist + bonusResult.totalApplied,
+        steps: [
+          {
+            label: "Gross box office",
+            value: breakdown.grossBasis ?? grossBoxOffice,
+            note: "Vs gross deal — no expense deductions before the percentage branch.",
+          },
+          {
+            label: "Guarantee branch",
+            value: breakdown.guaranteeBranchAmount,
+            note: "The guaranteed floor for the artist.",
+          },
+          {
+            label: `${(deal.percentage * 100).toFixed(0)}% of gross branch`,
+            value: breakdown.percentageBranchAmount,
+            note: "The percentage branch is compared against the guarantee.",
+          },
+          {
+            label:
+              breakdown.winningBranch === "percentage"
+                ? "Percentage branch wins"
+                : "Guarantee branch wins",
+            value: breakdown.finalPayoutToArtist,
+            note: "Greenroom pays the greater of the two branches.",
+          },
+          ...bonusResult.applied.map((b) => ({
+            label: b.label,
+            value: b.amount,
+            note: b.reason,
+          })),
+        ],
+        finalFormula: `max(${deal.guaranteeAmount}, gross ${grossBoxOffice.toFixed(2)} × ${deal.percentage}) = ${breakdown.finalPayoutToArtist.toFixed(2)}`,
+        vsBreakdown: breakdown,
+        bonusesApplied: bonusResult.applied,
+        bonusesNotTriggered: bonusResult.notTriggered,
+      };
+    }
+
+    if (deal.percentageBasis === "net") {
+      const breakdown = calculateVsNet({
+        grossBoxOffice,
+        feesTotal: totalFees,
+        expenses,
+        expenseCap: deal.expenseCap,
+        guaranteeAmount: deal.guaranteeAmount,
+        percentage: deal.percentage,
+      });
+
+      return {
+        supported: true,
+        grossBoxOffice,
+        netBoxOffice,
+        totalExpenses,
+        totalToArtist: breakdown.finalPayoutToArtist + bonusResult.totalApplied,
+        steps: [
+          { label: "Gross box office", value: breakdown.grossBoxOffice },
+          {
+            label: "Less fees",
+            value: -breakdown.feesTotal,
+            note: "Fees are removed before calculating the net basis.",
+          },
+          {
+            label: "Less eligible expenses",
+            value: -breakdown.eligibleExpensesCapped,
+            note:
+              breakdown.expenseCap == null
+                ? "No expense cap was entered for this Vs net deal."
+                : `Expenses capped at ${breakdown.expenseCap.toFixed(2)}; ${breakdown.overCapAbsorbedByVenue.toFixed(2)} absorbed by venue.`,
+          },
+          {
+            label: "Net basis",
+            value: breakdown.netBasis ?? 0,
+            note: "The percentage branch is calculated from this basis.",
+          },
+          {
+            label: "Guarantee branch",
+            value: breakdown.guaranteeBranchAmount,
+            note: "The guaranteed floor for the artist.",
+          },
+          {
+            label: `${(deal.percentage * 100).toFixed(0)}% of net branch`,
+            value: breakdown.percentageBranchAmount,
+            note: "The percentage branch is compared against the guarantee.",
+          },
+          {
+            label:
+              breakdown.winningBranch === "percentage"
+                ? "Percentage branch wins"
+                : "Guarantee branch wins",
+            value: breakdown.finalPayoutToArtist,
+            note: "Greenroom pays the greater of the two branches.",
+          },
+          ...bonusResult.applied.map((b) => ({
+            label: b.label,
+            value: b.amount,
+            note: b.reason,
+          })),
+        ],
+        finalFormula: `max(${deal.guaranteeAmount}, net ${(breakdown.netBasis ?? 0).toFixed(2)} × ${deal.percentage}) = ${breakdown.finalPayoutToArtist.toFixed(2)}`,
+        vsBreakdown: breakdown,
+        bonusesApplied: bonusResult.applied,
+        bonusesNotTriggered: bonusResult.notTriggered,
+      };
+    }
+
+    return {
+      supported: false,
+      reason: "Vs deal is missing a percentage basis. Expected gross or net.",
+      dealType: deal.dealType,
+    };
+  }
+
   // ---------- everything else: not supported ----------
   const friendlyName: Record<Deal["dealType"], string> = {
     flat: "Flat guarantee",
@@ -183,6 +362,90 @@ export function calculateSettlement(input: CalcInput): SettlementCalculation {
     reason:
       `${friendlyName[deal.dealType]} deals aren't supported in the in-app tool yet. ` +
       `Power users at venues like The Crescent default to spreadsheets for these.`,
+  };
+}
+
+export function calculateVsNet({
+  grossBoxOffice,
+  feesTotal,
+  expenses,
+  expenseCap,
+  guaranteeAmount,
+  percentage,
+  outsideCapRecoupsTotal = 0,
+}: CalculateVsNetInput): VsSettlementBreakdown {
+  const eligibleExpensesRaw = expenses
+    .filter((e) => !e.absorbedByVenue)
+    .reduce((sum, e) => sum + e.amount, 0);
+  const eligibleExpensesCapped =
+    expenseCap == null
+      ? eligibleExpensesRaw
+      : Math.min(eligibleExpensesRaw, expenseCap);
+  const overCapAbsorbedByVenue =
+    expenseCap == null ? 0 : Math.max(eligibleExpensesRaw - expenseCap, 0);
+  const netBasis =
+    grossBoxOffice - feesTotal - eligibleExpensesCapped - outsideCapRecoupsTotal;
+  const percentageBranchAmount = netBasis * percentage;
+  const guaranteeBranchAmount = guaranteeAmount;
+  const winningBranch =
+    percentageBranchAmount >= guaranteeBranchAmount ? "percentage" : "guarantee";
+  const finalPayoutToArtist = Math.max(
+    guaranteeBranchAmount,
+    percentageBranchAmount,
+  );
+
+  return {
+    variant: "vs_net",
+    grossBoxOffice,
+    feesTotal,
+    eligibleExpensesCapped,
+    expenseCap,
+    overCapAbsorbedByVenue,
+    outsideCapRecoupsTotal,
+    netBasis,
+    grossBasis: null,
+    guaranteeAmount,
+    percentage,
+    percentageBranchAmount,
+    guaranteeBranchAmount,
+    winningBranch,
+    finalPayoutToArtist,
+    flags: [],
+  };
+}
+
+export function calculateVsGross({
+  grossBoxOffice,
+  guaranteeAmount,
+  percentage,
+}: CalculateVsGrossInput): VsSettlementBreakdown {
+  const grossBasis = grossBoxOffice;
+  const percentageBranchAmount = grossBasis * percentage;
+  const guaranteeBranchAmount = guaranteeAmount;
+  const winningBranch =
+    percentageBranchAmount >= guaranteeBranchAmount ? "percentage" : "guarantee";
+  const finalPayoutToArtist = Math.max(
+    guaranteeBranchAmount,
+    percentageBranchAmount,
+  );
+
+  return {
+    variant: "vs_gross",
+    grossBoxOffice,
+    feesTotal: 0,
+    eligibleExpensesCapped: 0,
+    expenseCap: null,
+    overCapAbsorbedByVenue: 0,
+    outsideCapRecoupsTotal: 0,
+    netBasis: null,
+    grossBasis,
+    guaranteeAmount,
+    percentage,
+    percentageBranchAmount,
+    guaranteeBranchAmount,
+    winningBranch,
+    finalPayoutToArtist,
+    flags: [],
   };
 }
 
