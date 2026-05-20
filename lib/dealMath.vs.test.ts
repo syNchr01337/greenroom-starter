@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { Deal, Expense, TicketSale } from "@/db/schema";
+import type { Deal, Expense, Recoup, TicketSale } from "@/db/schema";
 import { calculateSettlement, calculateVsGross, calculateVsNet } from "./dealMath";
 
 function expense(amount: number, absorbedByVenue = false): Expense {
@@ -46,6 +46,16 @@ function ticketSale(gross: number, fees: number, qty = 500): TicketSale {
     gross,
     fees,
     capturedAt: new Date("2026-05-19T12:00:00Z"),
+  };
+}
+
+function recoup(amount: number): Recoup {
+  return {
+    id: `recoup_${amount}`,
+    category: "marketing",
+    label: "Marketing recoup",
+    amount,
+    status: "agreed",
   };
 }
 
@@ -146,6 +156,59 @@ describe("Vs settlement math", () => {
     assertMoney(result.vsBreakdown?.overCapAbsorbedByVenue ?? null, 1_280);
     assertMoney(result.vsBreakdown?.netBasis ?? null, 1_843);
     assertMoney(result.vsBreakdown?.finalPayoutToArtist ?? null, 1_658.7);
+  });
+
+  it("supports standard vs_net deals through the settlement dispatcher", () => {
+    const result = calculateSettlement({
+      deal: deal({
+        dealNotesFreetext:
+          "$5,000 guarantee vs 80% of net after expenses, whichever greater. Expenses capped $2,500.",
+      }),
+      ticketSales: [ticketSale(19_840, 1_984)],
+      expenses: [expense(1_500), expense(1_200)],
+    });
+
+    assert.equal(result.supported, true);
+    assert.equal(result.vsBreakdown?.variant, "vs_net");
+    assertMoney(result.vsBreakdown?.netBasis ?? null, 15_356);
+    assert.equal(result.vsBreakdown?.winningBranch, "percentage");
+  });
+
+  it("supports standard vs_gross deals through the settlement dispatcher", () => {
+    const result = calculateSettlement({
+      deal: deal({
+        percentageBasis: "gross",
+        guaranteeAmount: 6_583,
+        percentage: 0.85,
+        expenseCap: null,
+        dealNotesFreetext:
+          "$6,583 vs 85% of GROSS, no expense deductions, whichever greater.",
+      }),
+      ticketSales: [ticketSale(18_012, 1_801, 565)],
+      expenses: [expense(1_200)],
+    });
+
+    assert.equal(result.supported, true);
+    assert.equal(result.vsBreakdown?.variant, "vs_gross");
+    assertMoney(result.vsBreakdown?.grossBasis ?? null, 18_012);
+    assert.equal(result.vsBreakdown?.winningBranch, "percentage");
+  });
+
+  it("flags recoup ambiguity through the dispatcher when placement hint is missing", () => {
+    const result = calculateSettlement({
+      deal: deal({
+        dealNotesFreetext:
+          "$5,000 guarantee vs 80% of net after expenses. Marketing recoup $900.",
+      }),
+      ticketSales: [ticketSale(19_840, 1_984)],
+      expenses: [expense(1_500), expense(1_000)],
+      recoups: [recoup(900)],
+    });
+
+    assert.equal(result.supported, true);
+    assert.deepEqual(result.vsBreakdown?.flags, [
+      "Recoup placement ambiguous - confirm whether it is inside or outside the expense cap before finalizing settlement.",
+    ]);
   });
 
   it("returns unsupported for vs deals with walkout signals in deal notes", () => {

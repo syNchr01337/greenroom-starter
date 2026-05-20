@@ -134,6 +134,7 @@ export default async function SettlePage({
         {!calc.supported ? (
           <UnsupportedDeal
             dealType={calc.dealType}
+            reason={calc.reason}
             deal={deal}
             existingSettlement={settlement}
             grossSoFar={grossSoFar}
@@ -365,6 +366,7 @@ function LifecycleBar({
 
 function UnsupportedDeal({
   dealType,
+  reason,
   deal,
   existingSettlement,
   grossSoFar,
@@ -374,6 +376,7 @@ function UnsupportedDeal({
   expenseRowCount,
 }: {
   dealType: string;
+  reason: string;
   deal: NonNullable<Awaited<ReturnType<typeof getShowById>>>["deal"];
   existingSettlement: NonNullable<
     Awaited<ReturnType<typeof getShowById>>
@@ -384,13 +387,10 @@ function UnsupportedDeal({
   ticketCount: number;
   expenseRowCount: number;
 }) {
-  const friendly: Record<string, string> = {
-    flat: "flat guarantee",
-    percentage_of_gross: "percentage of gross",
-    percentage_of_net: "percentage of net",
-    vs: "vs deal",
-    door: "door deal",
-  };
+  const isExoticUnsupported = reason.includes("unsupported_exotic_structure");
+  const isMissingTerms =
+    /missing|expected gross or net|expected/i.test(reason) &&
+    !isExoticUnsupported;
 
   return (
     <>
@@ -403,10 +403,11 @@ function UnsupportedDeal({
             The in-app tool can&apos;t safely settle this deal yet.
           </h2>
           <p className="text-[13px] text-ink-500 max-w-md mx-auto leading-relaxed">
-            This deal is outside safe in-app computation. It may be missing
-            key terms like percentage or expense basis, or it may use a
-            structure like walkout pots or tier ratchets that we do not yet
-            support.
+            {isExoticUnsupported
+              ? "This deal appears to use a walkout pot, ratchet, breakeven, or escalator structure that Greenroom does not safely compute yet."
+              : isMissingTerms
+                ? "This deal is missing key structured terms Greenroom needs, like percentage, guarantee, or expense basis."
+                : "This deal is outside safe in-app computation. It may be missing key terms or use a structure we do not support yet."}
           </p>
           <p className="text-[13px] text-ink-500 max-w-md mx-auto leading-relaxed mt-2">
             Mariana would still do this one in her spreadsheet tonight while we
