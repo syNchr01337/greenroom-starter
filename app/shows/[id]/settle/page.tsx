@@ -403,8 +403,10 @@ function UnsupportedDeal({
             The in-app tool can&apos;t safely settle this deal yet.
           </h2>
           <p className="text-[13px] text-ink-500 max-w-md mx-auto leading-relaxed">
-            This could be because key terms are missing in Greenroom or because
-            this deal uses a structure we don&apos;t support yet.
+            This deal is outside safe in-app computation. It may be missing
+            key terms like percentage or expense basis, or it may use a
+            structure like walkout pots or tier ratchets that we do not yet
+            support.
           </p>
           <p className="text-[13px] text-ink-500 max-w-md mx-auto leading-relaxed mt-2">
             Mariana would still do this one in her spreadsheet tonight while we

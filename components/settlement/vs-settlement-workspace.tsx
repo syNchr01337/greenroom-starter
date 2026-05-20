@@ -55,6 +55,10 @@ export function VsSettlementWorkspace({
 }: VsSettlementWorkspaceProps) {
   const [interpretation, setInterpretation] =
     useState<AppliedInterpretation | null>(null);
+  const isLocked =
+    existingSettlement?.status === "finalized" ||
+    existingSettlement?.status === "paid" ||
+    existingSettlement?.status === "voided";
   // TODO: track_event("vs_settlement_viewed", { dealType, variant, showId })
   const currentBreakdown = interpretation
     ? recalculateBreakdown(initialBreakdown, interpretation)
@@ -71,6 +75,7 @@ export function VsSettlementWorkspace({
         existingSettlement={existingSettlement}
         flags={displayFlags}
         usingAiInterpretation={Boolean(interpretation)}
+        isLocked={isLocked}
       />
       <DealNotesAiAssist
         dealNotesFreetext={dealNotesFreetext}
@@ -79,8 +84,10 @@ export function VsSettlementWorkspace({
         percentage={structuredPercentage}
         expenseCap={structuredExpenseCap}
         usingAiInterpretation={Boolean(interpretation)}
+        locked={isLocked}
         onApply={(suggestions) => {
           // TODO: track_event("vs_ai_suggestions_applied", { showId })
+          if (isLocked) return;
           setInterpretation({
             variant: suggestions.suggestedVariant,
             guaranteeAmount: suggestions.suggestedGuarantee,
@@ -92,6 +99,7 @@ export function VsSettlementWorkspace({
         }}
         onReset={() => {
           // TODO: track_event("vs_ai_suggestions_reset", { showId })
+          if (isLocked) return;
           setInterpretation(null);
         }}
       />
@@ -171,11 +179,13 @@ function VsSettlementWorksheet({
   existingSettlement,
   flags,
   usingAiInterpretation,
+  isLocked,
 }: {
   breakdown: VsSettlementBreakdown;
   existingSettlement: { status: SettlementStatus } | null;
   flags: string[];
   usingAiInterpretation: boolean;
+  isLocked: boolean;
 }) {
   const isNet = breakdown.variant === "vs_net";
   const basisValue = isNet
@@ -193,6 +203,28 @@ function VsSettlementWorksheet({
 
   return (
     <div className="space-y-6">
+      {usingAiInterpretation && (
+        <Card>
+          <CardContent className="py-3">
+            <div className="text-[11.5px] text-ink-500">
+              Using AI-assisted interpretation for this settlement only. This
+              does not update the original deal terms.
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isLocked && (
+        <Card accent="amber">
+          <CardContent className="py-3">
+            <div className="text-[12px] text-ink-700">
+              This settlement is finalized and cannot be edited. Contact your
+              admin to reopen.
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card accent="brand">
         <CardContent className="py-5">
           <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">

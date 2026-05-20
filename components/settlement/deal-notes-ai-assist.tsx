@@ -22,6 +22,7 @@ interface DealNotesAiAssistProps extends DealNotesAiRequest {
   onApply: (suggestions: DealNotesAiResponse) => void;
   onReset: () => void;
   usingAiInterpretation: boolean;
+  locked?: boolean;
 }
 
 export function DealNotesAiAssist({
@@ -33,6 +34,7 @@ export function DealNotesAiAssist({
   onApply,
   onReset,
   usingAiInterpretation,
+  locked = false,
 }: DealNotesAiAssistProps) {
   const [result, setResult] = useState<DealNotesAiResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -96,13 +98,19 @@ export function DealNotesAiAssist({
             variant="default"
             size="sm"
             onClick={analyze}
-            disabled={loading}
+            disabled={loading || locked}
           >
             <Sparkles className="h-3.5 w-3.5" />
             {loading ? "Analyzing..." : "Analyze deal notes"}
           </Button>
           {usingAiInterpretation && (
-            <Button type="button" variant="ghost" size="sm" onClick={onReset}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onReset}
+              disabled={locked}
+            >
               <RotateCcw className="h-3.5 w-3.5" />
               Reset to original terms
             </Button>
@@ -196,6 +204,7 @@ export function DealNotesAiAssist({
                 variant="default"
                 size="sm"
                 onClick={() => onApply(result)}
+                disabled={locked}
               >
                 Apply suggestions to this settlement
               </Button>
@@ -207,6 +216,7 @@ export function DealNotesAiAssist({
                   // TODO: track_event("deal_notes_ai_ignored", { showId })
                   setResult(null);
                 }}
+                disabled={locked}
               >
                 Ignore for now
               </Button>
