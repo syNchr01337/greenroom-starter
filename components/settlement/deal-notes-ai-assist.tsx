@@ -21,6 +21,7 @@ import type {
 interface DealNotesAiAssistProps extends DealNotesAiRequest {
   onApply: (suggestions: DealNotesAiResponse) => void;
   onReset: () => void;
+  onAmbiguitiesChange?: (ambiguities: string[]) => void;
   usingAiInterpretation: boolean;
   locked?: boolean;
 }
@@ -33,6 +34,7 @@ export function DealNotesAiAssist({
   expenseCap,
   onApply,
   onReset,
+  onAmbiguitiesChange,
   usingAiInterpretation,
   locked = false,
 }: DealNotesAiAssistProps) {
@@ -44,6 +46,7 @@ export function DealNotesAiAssist({
     // TODO: track_event("deal_notes_ai_analyze_clicked", { showId })
     setLoading(true);
     setError(null);
+    onAmbiguitiesChange?.([]);
     try {
       const response = await fetch("/api/deal-notes-ai", {
         method: "POST",
@@ -57,12 +60,15 @@ export function DealNotesAiAssist({
         } satisfies DealNotesAiRequest),
       });
       if (!response.ok) throw new Error("Request failed");
-      setResult((await response.json()) as DealNotesAiResponse);
+      const parsed = (await response.json()) as DealNotesAiResponse;
+      setResult(parsed);
+      onAmbiguitiesChange?.(parsed.ambiguities ?? []);
     } catch {
       // TODO: track_event("deal_notes_ai_failed", { showId })
       setError(
         "Couldn't get suggestions right now - you can still settle using the breakdown above.",
       );
+      onAmbiguitiesChange?.([]);
     } finally {
       setLoading(false);
     }
@@ -215,6 +221,7 @@ export function DealNotesAiAssist({
                 onClick={() => {
                   // TODO: track_event("deal_notes_ai_ignored", { showId })
                   setResult(null);
+                  onAmbiguitiesChange?.([]);
                 }}
                 disabled={locked}
               >

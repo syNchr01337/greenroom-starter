@@ -148,6 +148,67 @@ describe("Vs settlement math", () => {
     assertMoney(result.vsBreakdown?.finalPayoutToArtist ?? null, 1_658.7);
   });
 
+  it("returns unsupported for vs deals with walkout signals in deal notes", () => {
+    const result = calculateSettlement({
+      deal: deal({
+        dealNotesFreetext:
+          "$5,000 vs 80% net + walkout pot. After breakeven, all incremental gross goes to artist.",
+      }),
+      ticketSales: [ticketSale(20_000, 2_000)],
+      expenses: [expense(1_200)],
+    });
+
+    assert.equal(result.supported, false);
+    assert.match(result.reason, /unsupported_exotic_structure/);
+  });
+
+  it("returns unsupported for vs deals with tier ratchet bonuses", () => {
+    const result = calculateSettlement({
+      deal: deal({
+        bonusesJson: JSON.stringify([
+          {
+            type: "tier_ratchet",
+            label: "Ratchet: 80% to 90% over 80% sold",
+            tiers: [
+              { from: 0, to: 0.8, percentage: 0.8 },
+              { from: 0.8, to: null, percentage: 0.9 },
+            ],
+          },
+        ]),
+      }),
+      ticketSales: [ticketSale(20_000, 2_000)],
+      expenses: [expense(1_200)],
+    });
+
+    assert.equal(result.supported, false);
+    assert.match(result.reason, /unsupported_exotic_structure/);
+  });
+
+  it("returns unsupported for vs deals with breakeven or escalator language", () => {
+    const result = calculateSettlement({
+      deal: deal({
+        dealNotesFreetext:
+          "$5,000 guarantee vs 80% net at base, escalator after break even.",
+      }),
+      ticketSales: [ticketSale(20_000, 2_000)],
+      expenses: [expense(1_200)],
+    });
+
+    assert.equal(result.supported, false);
+    assert.match(result.reason, /unsupported_exotic_structure/);
+  });
+
+  it("returns unsupported when a vs deal is missing structured terms", () => {
+    const result = calculateSettlement({
+      deal: deal({ percentage: null }),
+      ticketSales: [ticketSale(20_000, 2_000)],
+      expenses: [expense(1_200)],
+    });
+
+    assert.equal(result.supported, false);
+    assert.match(result.reason, /missing a guarantee amount or percentage/);
+  });
+
   it("calculates vs_gross when guarantee branch wins", () => {
     const breakdown = calculateVsGross({
       grossBoxOffice: 8_000,

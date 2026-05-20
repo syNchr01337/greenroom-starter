@@ -55,6 +55,7 @@ export function VsSettlementWorkspace({
 }: VsSettlementWorkspaceProps) {
   const [interpretation, setInterpretation] =
     useState<AppliedInterpretation | null>(null);
+  const [assistantAmbiguities, setAssistantAmbiguities] = useState<string[]>([]);
   const isLocked =
     existingSettlement?.status === "finalized" ||
     existingSettlement?.status === "paid" ||
@@ -65,7 +66,7 @@ export function VsSettlementWorkspace({
     : initialBreakdown;
   const displayFlags = mergeFlags(
     currentBreakdown.flags,
-    interpretation?.ambiguities ?? [],
+    interpretation?.ambiguities ?? assistantAmbiguities,
   );
 
   return (
@@ -85,6 +86,7 @@ export function VsSettlementWorkspace({
         expenseCap={structuredExpenseCap}
         usingAiInterpretation={Boolean(interpretation)}
         locked={isLocked}
+        onAmbiguitiesChange={setAssistantAmbiguities}
         onApply={(suggestions) => {
           // TODO: track_event("vs_ai_suggestions_applied", { showId })
           if (isLocked) return;
@@ -100,6 +102,7 @@ export function VsSettlementWorkspace({
         onReset={() => {
           // TODO: track_event("vs_ai_suggestions_reset", { showId })
           if (isLocked) return;
+          setAssistantAmbiguities([]);
           setInterpretation(null);
         }}
       />

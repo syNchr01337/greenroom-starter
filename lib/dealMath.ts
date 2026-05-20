@@ -121,6 +121,7 @@ export function parseBonuses(deal: Deal): Bonus[] {
 
 export function calculateSettlement(input: CalcInput): SettlementCalculation {
   const { deal, ticketSales, expenses, venueCapacity, ticketsSold } = input;
+  const bonuses = parseBonuses(deal);
   const recoupsTotal = (input.recoups ?? [])
     .filter((r) => r.status !== "withdrawn")
     .reduce((sum, r) => sum + r.amount, 0);
@@ -145,7 +146,7 @@ export function calculateSettlement(input: CalcInput): SettlementCalculation {
         dealType: deal.dealType,
       };
     }
-    const bonusResult = applyBonuses(parseBonuses(deal), {
+    const bonusResult = applyBonuses(bonuses, {
       gross: grossBoxOffice,
       tickets,
       capacity: venueCapacity,
@@ -187,7 +188,7 @@ export function calculateSettlement(input: CalcInput): SettlementCalculation {
       };
     }
     const payout = grossBoxOffice * deal.percentage;
-    const bonusResult = applyBonuses(parseBonuses(deal), {
+    const bonusResult = applyBonuses(bonuses, {
       gross: grossBoxOffice,
       tickets,
       capacity: venueCapacity,
@@ -222,6 +223,10 @@ export function calculateSettlement(input: CalcInput): SettlementCalculation {
 
   // ---------- percentage of net ----------
   if (deal.dealType === "percentage_of_net") {
+    if (hasUnsupportedExoticStructure(deal, bonuses)) {
+      return unsupportedExoticStructure(deal);
+    }
+
     if (deal.percentage == null) {
       return {
         supported: false,
@@ -230,7 +235,7 @@ export function calculateSettlement(input: CalcInput): SettlementCalculation {
       };
     }
 
-    const bonusResult = applyBonuses(parseBonuses(deal), {
+    const bonusResult = applyBonuses(bonuses, {
       gross: grossBoxOffice,
       tickets,
       capacity: venueCapacity,
@@ -293,6 +298,10 @@ export function calculateSettlement(input: CalcInput): SettlementCalculation {
 
   // ---------- vs deal ----------
   if (deal.dealType === "vs") {
+    if (hasUnsupportedExoticStructure(deal, bonuses)) {
+      return unsupportedExoticStructure(deal);
+    }
+
     if (deal.guaranteeAmount == null || deal.percentage == null) {
       return {
         supported: false,
@@ -301,7 +310,7 @@ export function calculateSettlement(input: CalcInput): SettlementCalculation {
       };
     }
 
-    const bonusResult = applyBonuses(parseBonuses(deal), {
+    const bonusResult = applyBonuses(bonuses, {
       gross: grossBoxOffice,
       tickets,
       capacity: venueCapacity,
@@ -451,6 +460,32 @@ export function calculateSettlement(input: CalcInput): SettlementCalculation {
       `${friendlyName[deal.dealType]} deals aren't supported in the in-app tool yet. ` +
       `Power users at venues like The Crescent default to spreadsheets for these.`,
   };
+}
+
+function unsupportedExoticStructure(deal: Deal): SettlementCalculation {
+  return {
+    supported: false,
+    reason:
+      "unsupported_exotic_structure: walkout pots, ratchets, breakeven structures, and escalators require manual settlement.",
+    dealType: deal.dealType,
+  };
+}
+
+function hasUnsupportedExoticStructure(deal: Deal, bonuses: Bonus[]): boolean {
+  if (bonuses.some((bonus) => bonus.type === "tier_ratchet")) {
+    return true;
+  }
+
+  const textToInspect = [
+    deal.dealNotesFreetext ?? "",
+    ...bonuses.map((bonus) => bonus.label),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return /\b(walkout|walk out|ratchet|escalator|breakeven|break even|walkout pot|pot deal)\b/.test(
+    textToInspect,
+  );
 }
 
 export function calculateVsNet({
